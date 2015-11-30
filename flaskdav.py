@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, render_template, make_response
+from flask import Flask, request, redirect, url_for, render_template, make_response, g
 from flask.views import MethodView
 from string import atoi
 import shutil
@@ -32,17 +32,43 @@ def is_authorized(cookies_list):
 
 FS_HANDLER = utils.FilesystemHandler(FS_PATH, URI_BEGINNING_PATH['webdav'])
 
+
+@app.before_request
+def before_request():
+    """
+       allow cross origin for webdav uri that are authorized
+       and filter unauthorized requests!
+    """
+    if request.path.startswith(URI_BEGINNING_PATH['webdav']):
+        response = None
+
+        headers = {}
+        headers['Access-Control-Max-Age'] = '3600'
+        headers['Access-Control-Allow-Credentials'] = 'true'
+        content = ''
+        if is_authorized(request.cookies):
+            headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+            headers['Access-Control-Allow-Headers'] = 'Origin, Accept, Accept-Encoding, Content-Length, Content-Type, Authorization, Depth, If-Modified-Since, If-None-Match'
+            headers['Access-Control-Expose-Headers'] = 'Content-Type, Last-Modified, WWW-Authenticate'
+            response = make_response(content, 200)
+            response.headers = headers
+        else:
+            headers['WWW-Authenticate'] = 'Nayookie login_url=' + request.url_root + URI_BEGINNING_PATH['authorization'] + '{?back_url}'
+            response = make_response(content, 401)
+            response.headers = headers
+            # do not handle the request if not authorized
+            return response
+
+        g.response = response
+
 class WebDAV(MethodView):
     methods = ['GET', 'HEAD', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY', 'MOVE']
 
     def __init__(self):
-        self.authorization = is_authorized(request.cookies)
         self.baseuri = URI_BEGINNING_PATH['webdav']
 
-    def before_request(self, pathname):
-        pass
-
     def get_body(self):
+        """ get the request's body """
         request_data = request.data
         if not request_data and atoi(request.headers['Content-length']):
             try:
@@ -53,52 +79,38 @@ class WebDAV(MethodView):
         return request_data
 
     def head(self, pathname):
-        """ HEAD: returns headers only """
-        origin = request.headers.get('Origin', '*')
+        """
+           HEAD:
+           returns headers only
+        """
 
-        response = None
-
-        headers = {}
-        headers['Access-Control-Max-Age'] = '3600'
-        headers['Access-Control-Allow-Credentials'] = 'true'
-        content = ''
-        if self.authorization:
-            headers['Access-Control-Allow-Origin'] = origin
-            headers['Access-Control-Allow-Headers'] = 'Origin, Accept, Accept-Encoding, Content-Length, Content-Type, Authorization, Depth, If-Modified-Since, If-None-Match'
-            headers['Access-Control-Expose-Headers'] = 'Content-Type, Last-Modified, WWW-Authenticate'
-            response = make_response(content, 200)
-        else:
-            headers['WWW-Authenticate'] = 'Nayookie login_url=' + request.url_root + URI_BEGINNING_PATH['authorization'] + '{?back_url}'
-            response = make_response(content, 401)
-
-        response.headers = headers
-        return response
+        return g.response
 
     def get(self, pathname):
-        """ GET: return headers + body (resource content or list of resources) """
+        """
+           GET:
+           return headers + body (resource content or list of resources)
+        """
+        response = g.response
         localpath = FS_HANDLER.uri2local(pathname)
-
-        response = self.head(pathname)
         # TODO if into a collection => list of the ressources
-        print('localpath: ' + localpath)
         data = ''
 
-        if self.authorization:
-            if os.path.isdir(localpath):
-                data = "\n".join(FS_HANDLER.get_children(pathname))
-            elif os.path.isfile(localpath):
-                try:
-                    data_resource = FS_HANDLER.get_data(pathname)
-                    # TODO send large response by chunks would be nice for big
-                    # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
-                    data = data_resource.read()
-                except:
-                    # 403?
-                    response.status = '403'
-            else:
-                response.status = '404'
+        if os.path.isdir(localpath):
+            data = "\n".join(FS_HANDLER.get_children(pathname))
+        elif os.path.isfile(localpath):
+            try:
+                data_resource = FS_HANDLER.get_data(pathname)
+                # TODO send large response by chunks would be nice for big
+                # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
+                data = data_resource.read()
+            except:
+                # 403?
+                response.status = '403'
+        else:
+            response.status = '404'
 
-            response.data = data
+        response.data = data
 
         return response
 
@@ -108,32 +120,34 @@ class WebDAV(MethodView):
             on collection: 405 Method Not Allowed,
             on ressource: create if not existschange content
         """
-        response = self.head(pathname)
 
-        if self.authorization:
-            localpath = FS_HANDLER.uri2local(pathname)
-            request_body = self.get_body()
-            if request_body is None:
-                response.status = '500'
-            elif os.path.isdir(localpath):
-                response.status = '405'
-            else:
-                response.status = str(FS_HANDLER.put(pathname, request_body))
+        response = g.response
+
+        localpath = FS_HANDLER.uri2local(pathname)
+        request_body = self.get_body()
+        if request_body is None:
+            response.status = '500'
+        elif os.path.isdir(localpath):
+            response.status = '405'
+        else:
+            response.status = str(FS_HANDLER.put(pathname, request_body))
 
         return response
 
     def propfind(self, pathname):
-        response = self.head(pathname)
-        if self.authorization:
-            # currently unsupported
-            response.status = '423'
+
+        response = g.response
+
+        # currently unsupported
+        response.status = '423'
         return response
 
     def proppatch(self, pathname):
-        response = self.head(pathname)
-        if self.authorization:
-            # currently unsupported
-            response.status = '423'
+
+        response = g.response
+
+        # currently unsupported
+        response.status = '423'
         return response
 
     def mkcol(self, pathname):
@@ -142,9 +156,9 @@ class WebDAV(MethodView):
             creates a collection (that corresponds to a directory on the file system)
         """
 
-        response = self.head(pathname)
-        if self.authorization:
-            response.status = str(FS_HANDLER.mkcol(pathname))
+        response = g.response
+
+        response.status = str(FS_HANDLER.mkcol(pathname))
         return response
 
     def delete(self, pathname):
@@ -153,23 +167,23 @@ class WebDAV(MethodView):
            delete a resource or collection
         """
 
-        response = self.head(pathname)
-        if self.authorization:
-            localpath = FS_HANDLER.uri2local(pathname)
-            if not os.path.exists(localpath):
-                response.status = '404'
-            if os.path.isdir(localpath):
-                try:
-                    shutil.rmtree(localpath)
-                    response.status = '204'
-                except OSError:
-                    response.status = '403'
-            elif os.path.isfile(localpath):
-                try:
-                    os.remove(localpath)
-                    response.status = '204'
-                except OSError:
-                    response.status = '403'
+        response = g.response
+
+        localpath = FS_HANDLER.uri2local(pathname)
+        if not os.path.exists(localpath):
+            response.status = '404'
+        if os.path.isdir(localpath):
+            try:
+                shutil.rmtree(localpath)
+                response.status = '204'
+            except OSError:
+                response.status = '403'
+        elif os.path.isfile(localpath):
+            try:
+                os.remove(localpath)
+                response.status = '204'
+            except OSError:
+                response.status = '403'
         return response
 
     def copy(self, pathname):
@@ -178,38 +192,37 @@ class WebDAV(MethodView):
            copy a resource or collection
         """
 
-        response = self.head(pathname)
-        if self.authorization:
-            localpath = FS_HANDLER.uri2local(pathname)
-            destination = request.headers['Destination']
-            host = request.headers['Host']
-            destination = destination.split(host + URI_BEGINNING_PATH['webdav'], 1)[-1]
-            destination_path = FS_HANDLER.uri2local(destination)
-            print('COPY: %s -> %s' % (localpath, destination_path))
+        response = g.response
 
-            if not os.path.exists(localpath):
-                response.status = '404'
-            elif not destination_path:
-                response.status = '400'
-            elif 'Overwrite' in request.headers and request.headers['Overwrite'] == 'F' and os.path.exists(destination_path):
-                response.status = '412'
+        localpath = FS_HANDLER.uri2local(pathname)
+        destination = request.headers['Destination']
+        host = request.headers['Host']
+        destination = destination.split(host + URI_BEGINNING_PATH['webdav'], 1)[-1]
+        destination_path = FS_HANDLER.uri2local(destination)
+        print('COPY: %s -> %s' % (localpath, destination_path))
+
+        if not os.path.exists(localpath):
+            response.status = '404'
+        elif not destination_path:
+            response.status = '400'
+        elif 'Overwrite' in request.headers and request.headers['Overwrite'] == 'F' and os.path.exists(destination_path):
+            response.status = '412'
+        else:
+            response.status = '201'
+            if os.path.exists(destination_path):
+                delete_response = self.delete(destination)
+                response.status = '204'
+
+            if os.path.isfile(localpath):
+                try:
+                    shutil.copy2(localpath, destination_path)
+                except:
+                    print('problem with copy2')
             else:
-                response.status = '201'
-                if os.path.exists(destination_path):
-                    delete_response = self.delete(destination)
-                    print delete_response.status
-                    response.status = '204'
-
-                if os.path.isfile(localpath):
-                    try:
-                        shutil.copy2(localpath, destination_path)
-                    except:
-                        print('problem with copy2')
-                else:
-                    try:
-                        shutil.copytree(localpath, destination_path)
-                    except:
-                        print('problem with copytree')
+                try:
+                    shutil.copytree(localpath, destination_path)
+                except:
+                    print('problem with copytree')
         return response
 
     def move(self, pathname):
@@ -218,28 +231,30 @@ class WebDAV(MethodView):
            move a resource or collection
         """
 
-        response = self.head(pathname)
-        if self.authorization:
-            copy_response = self.copy(pathname)
-            response.status = copy_response.status
-            if copy_response.status == '201' or copy_response.status == '204':
-                delete_response = self.delete(pathname)
-                if delete_response.status != '204':
-                    response.status = '424'
+        response = g.response
+
+        copy_response = self.copy(pathname)
+        response.status = copy_response.status
+        if copy_response.status == '201' or copy_response.status == '204':
+            delete_response = self.delete(pathname)
+            if delete_response.status != '204':
+                response.status = '424'
         return response
 
 app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>', view_func=WebDAV.as_view('dav'))
 
 
-@app.route(URI_BEGINNING_PATH['authorization'])
+@app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
 def authorize():
-    origin = request.headers.get('Origin')
-    print origin
-    headers = request.headers
-    back_url = request.args.get('back_url')
-    print origin
-    response = make_response(render_template('authorization_page.html', headers=headers, origin=origin, back_url=back_url))
-    response.set_cookie('mycookie', value='', max_age=None, expires=None, path='/', domain=None, secure=None, httponly=False)
+    if request.method == 'POST':
+        response = make_response(render_template('authorization_page_cookie_set.html', headers=headers, origin=origin, back_url=back_url))
+        response.set_cookie('mycookie', value='', max_age=None, expires=None, path='/',
+                            domain=None, secure=None, httponly=False)
+    else:
+        origin = request.headers.get('Origin')
+        headers = request.headers
+        back_url = request.args.get('back_url')
+        response = make_response(render_template('authorization_page.html', headers=headers, origin=origin, back_url=back_url))
     return response
 
 @app.route(URI_BEGINNING_PATH['editor'])
