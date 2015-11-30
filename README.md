@@ -3,8 +3,7 @@
 WebDAV server based on Flask.
 
 ## Generate a certificate at the project's root
-openssl genrsa 2048 > ssl.key
-openssl req -new -x509 -nodes -sha1 -days 365 -key ssl.key > ssl.cert
+openssl req -nodes -newkey rsa -days 365 -keyout "ssl.key" -x509 -out "ssl.cert"
 
 ## LICENSE
 flaskdav is under the GPL2 license.

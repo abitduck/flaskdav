@@ -1,6 +1,5 @@
 from flask import Flask, request, redirect, url_for, render_template, make_response, g
 from flask.views import MethodView
-from string import atoi
 import shutil
 import utils
 import os
@@ -70,11 +69,10 @@ class WebDAV(MethodView):
     def get_body(self):
         """ get the request's body """
         request_data = request.data
-        if not request_data and atoi(request.headers['Content-length']):
+        if not request_data and int(request.headers['Content-length']):
             try:
-                d = request.form.items()[0][0]
-                request_data = d
-            except:
+                request_data = request.form.items()[0][0]
+            except IndexError:
                 request_data = None
         return request_data
 
@@ -104,7 +102,7 @@ class WebDAV(MethodView):
                 # TODO send large response by chunks would be nice for big
                 # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
                 data = data_resource.read()
-            except:
+            except Exception:
                 # 403?
                 response.status = '403'
         else:
@@ -216,12 +214,12 @@ class WebDAV(MethodView):
             if os.path.isfile(localpath):
                 try:
                     shutil.copy2(localpath, destination_path)
-                except:
+                except Exception:
                     print('problem with copy2')
             else:
                 try:
                     shutil.copytree(localpath, destination_path)
-                except:
+                except Exception:
                     print('problem with copytree')
         return response
 
@@ -246,12 +244,13 @@ app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>', view_func=Web
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
 def authorize():
+    origin = request.headers.get('Origin')
+
     if request.method == 'POST':
         response = make_response(render_template('authorization_page_cookie_set.html', headers=headers, origin=origin, back_url=back_url))
         response.set_cookie('mycookie', value='', max_age=None, expires=None, path='/',
                             domain=None, secure=None, httponly=False)
     else:
-        origin = request.headers.get('Origin')
         headers = request.headers
         back_url = request.args.get('back_url')
         response = make_response(render_template('authorization_page.html', headers=headers, origin=origin, back_url=back_url))
