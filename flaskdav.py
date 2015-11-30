@@ -61,7 +61,7 @@ def before_request():
         g.response = response
 
 class WebDAV(MethodView):
-    methods = ['GET', 'HEAD', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY', 'MOVE']
+    methods = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY', 'MOVE']
 
     def __init__(self):
         self.baseuri = URI_BEGINNING_PATH['webdav']
@@ -76,13 +76,6 @@ class WebDAV(MethodView):
                 request_data = None
         return request_data
 
-    def head(self, pathname):
-        """
-           HEAD:
-           returns headers only
-        """
-
-        return g.response
 
     def get(self, pathname):
         """
