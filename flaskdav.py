@@ -129,8 +129,7 @@ class WebDAV(MethodView):
                 # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
                 data = data_resource.read()
             except Exception:
-                # 403?
-                response.status = '403'
+                response.status = '500'
         else:
             response.status = '404'
 
@@ -148,6 +147,7 @@ class WebDAV(MethodView):
         response = g.response
 
         localpath = FS_HANDLER.uri2local(pathname)
+        # TODO: get large request chunk by chunk...
         request_body = self.get_body()
         if request_body is None:
             response.status = '500'
