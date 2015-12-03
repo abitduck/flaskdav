@@ -18,7 +18,6 @@ URI_BEGINNING_PATH = {
     'webdav': '/webdav/',
     'links': '/',
     'home': '/webdav/home/',
-    'editor': '/editor',
     'devices': '/webdav/devices/'
 }
 
@@ -248,10 +247,6 @@ def authorize():
         back_url = request.args.get('back_url')
         response = make_response(render_template('authorization_page.html', headers=headers, origin=origin, back_url=back_url))
     return response
-
-@app.route(URI_BEGINNING_PATH['editor'])
-def editor():
-    return render_template('code_editor.html')
 
 @app.route(URI_BEGINNING_PATH['system'])
 def system():
