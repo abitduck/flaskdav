@@ -2,6 +2,7 @@ from itsdangerous import Signer, base64_encode, base64_decode
 from flask import Flask, request, render_template, make_response, g
 from flask.views import MethodView
 
+import urlparse
 import shutil
 import utils
 import os
@@ -83,9 +84,9 @@ def before_request():
             response = make_response(content, 200)
             response.headers = headers
         else:
-            headers['WWW-Authenticate'] = \
-                'Nayookie login_url=' + request.url_root + \
-                URI_BEGINNING_PATH['authorization'] + '{?back_url}'
+            headers['WWW-Authenticate'] = 'Nayookie login_url=' + \
+                urlparse.urljoin(request.url_root,
+                URI_BEGINNING_PATH['authorization']) + '{?back_url}'
             response = make_response(content, 401)
             response.headers = headers
             # do not handle the request if not authorized
