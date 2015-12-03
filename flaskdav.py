@@ -12,6 +12,9 @@ app.config.from_object(__name__)
 
 FS_PATH = '/tmp/couscous'
 
+ALLOWED_METHODS = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE',
+                   'COPY', 'MOVE', 'OPTIONS']
+
 def debug(content):
     if app.debug: print(content)
 
@@ -78,11 +81,24 @@ def before_request():
             'Authorization, Depth, If-Modified-Since, If-None-Match'
         headers['Access-Control-Expose-Headers'] = \
             'Content-Type, Last-Modified, WWW-Authenticate'
+        headers['Access-Control-Allow-Origin'] = request.headers.get('Origin')
+
+        specific_header = request.headers.get('Access-Control-Request-Headers')
 
         if is_authorized(request.cookies):
-            headers['Access-Control-Allow-Origin'] = request.headers.get('Origin')
             response = make_response(content, 200)
             response.headers = headers
+
+        elif request.method == 'OPTIONS' and specific_header:
+            # tells the world we do CORS when authorized
+            debug('OPTIONS request special header: ' + specific_header)
+            headers['Access-Control-Request-Headers'] = specific_header
+            headers['Access-Control-Allow-Origin'] = '*'
+            headers['Access-Control-Allow-Methods'] = ', '.join(ALLOWED_METHODS)
+            response = make_response(content, 200)
+            response.headers = headers
+            return response
+
         else:
             headers['WWW-Authenticate'] = 'Nayookie login_url=' + \
                 urlparse.urljoin(request.url_root,
@@ -95,8 +111,7 @@ def before_request():
         g.response = response
 
 class WebDAV(MethodView):
-    methods = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY',
-               'MOVE']
+    methods = ALLOWED_METHODS
 
     def __init__(self):
         self.baseuri = URI_BEGINNING_PATH['webdav']
@@ -267,6 +282,15 @@ class WebDAV(MethodView):
             if delete_response.status != '204':
                 response.status = '424'
         return response
+
+    def options(self, pathname):
+        """
+           OPTIONS:
+           used to process pre-flight request
+        """
+
+        return g.response
+
 
 app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>',
                  view_func=WebDAV.as_view('dav'))
