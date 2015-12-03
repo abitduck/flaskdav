@@ -21,12 +21,39 @@ URI_BEGINNING_PATH = {
     'devices': '/webdav/devices/'
 }
 
-def verify_cookie(cookie):
-    return False
+def make_cookie_content_to_be_signed():
+    """ cookie content is based on Origin header and User-Agent
+    (later HMAC'ed) """
+
+    origin = request.headers.get('Origin')
+    useragent = request.headers.get('User-Agent')
+    return str(origin) + str(useragent)
+
+def verify_cookie(cookey):
+    """ verify that the signature contained in the cookie
+    corresponds to the informations sent by the app (see
+    make_cookie_content_to_be_signed) """
+
+    is_correct = False
+
+    debug("verify_cookie: " + base64_decode(cookey))
+    cookie_value = request.cookies.get(str(cookey))
+    if cookie_value:
+        s = Signer(app.secret_key)
+        debug("verify_cookie: " + cookie_value + ", " + \
+              s.get_signature(make_cookie_content_to_be_signed()))
+        if s.get_signature(make_cookie_content_to_be_signed()) == cookie_value:
+            is_correct = True
+
+    return is_correct
 
 def is_authorized(cookies_list):
-    #return any(verify_cookie(cookie) for cookie in cookies_list)
-    return True
+    origin = request.headers.get('Origin')
+    # TODO: accept requests from 127.0.0.1:port and localhost:port?
+    #       accept any port of any local addresses: localhost and 127.0.0.0/8?
+    if origin is None: # request from same origin
+        return True
+    return verify_cookie(base64_encode(origin))
 
 FS_HANDLER = utils.FilesystemHandler(FS_PATH, URI_BEGINNING_PATH['webdav'])
 
@@ -236,16 +263,33 @@ app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>', view_func=Web
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
 def authorize():
+    """ authorization page
+        GET: returns page where the user can authorize an app to access the
+             filesystem via the webdav server
+        POST: set a cookie
+    """
     origin = request.headers.get('Origin')
 
     if request.method == 'POST':
-        response = make_response(render_template('authorization_page_cookie_set.html', headers=headers, origin=origin, back_url=back_url))
-        response.set_cookie('mycookie', value='', max_age=None, expires=None, path='/',
-                            domain=None, secure=None, httponly=False)
+        response = make_response()
+        s = Signer(app.secret_key)
+        key = base64_encode(str(origin))
+        back = request.args.get('back_url')
+        debug(back)
+
+        # TODO add checkbox to reset private key and invalidate all previous authorizations
+        response.set_cookie(key, value=s.get_signature(make_cookie_content_to_be_signed()), max_age=None,
+                                expires=None, path='/', domain=None, secure=True, httponly=True)
+
+        if back:
+            response.status = '301' # moved permanently
+            response.headers['Location'] = back
+        # what if not? use referer? send bad request error? just do nothing?
+
     else:
         headers = request.headers
-        back_url = request.args.get('back_url')
-        response = make_response(render_template('authorization_page.html', headers=headers, origin=origin, back_url=back_url))
+        response = make_response(render_template('authorization_page.html',
+                                 origin=origin, back_url=request.args.get('back_url')))
     return response
 
 @app.route(URI_BEGINNING_PATH['system'])
@@ -260,11 +304,27 @@ def links():
     return 'TODO: nice set of links to useful local pages: %s <br> + HOWTO' % the_links
 
 if __name__ == '__main__':
-    from OpenSSL import SSL
-    context = SSL.Context(SSL.TLSv1_2_METHOD)
-    # TODO set strong ciphers with context.set_cipher_list()
-    # TODO give path to key/cert using command line parameters
-    context.use_privatekey_file('ssl.key')
-    context.use_certificate_file('ssl.cert')
 
-    app.run(ssl_context=context)
+    import argparse
+    parser = argparse.ArgumentParser(description='Run a local webdav/HTTP server.')
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='Run flask app in debug mode (not recommended for use in production).')
+    https = parser.add_argument_group('HTTPS', 'Arguments required for HTTPS support.')
+    https.add_argument('--key', type=str, action='store', default=None,
+                       help='SSL/TLS private key. Required for HTTPS support.')
+    https.add_argument('--cert', type=str, action='store', default=None,
+                       help='SSL/TLS certificate. Required for HTTPS support.')
+
+    args = parser.parse_args()
+    app.debug = args.debug
+
+    context = None
+    if args.key and args.cert and os.path.isfile(args.key) and os.path.isfile(args.cert):
+        from OpenSSL import SSL
+        context = SSL.Context(SSL.TLSv1_2_METHOD)
+        # TODO set strong ciphers with context.set_cipher_list()
+        context.use_privatekey_file('ssl.key')
+        context.use_certificate_file('ssl.cert')
+
+    app.secret_key = os.urandom(24)
+    app.run(host="localhost", ssl_context=context)
