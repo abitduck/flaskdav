@@ -1,16 +1,18 @@
-from flask import Flask, request, redirect, url_for, render_template, make_response, g
+from itsdangerous import Signer, base64_encode, base64_decode
+from flask import Flask, request, render_template, make_response, g
 from flask.views import MethodView
+
 import shutil
 import utils
 import os
-DEBUG = True
-
 
 app = Flask(__name__.split('.')[0])
 app.config.from_object(__name__)
 
 FS_PATH = '/tmp/couscous'
-SECRET_KEY = os.urandom(24)
+
+def debug(content):
+    if app.debug: print(content)
 
 URI_BEGINNING_PATH = {
     'authorization': '/login/',
@@ -57,7 +59,6 @@ def is_authorized(cookies_list):
 
 FS_HANDLER = utils.FilesystemHandler(FS_PATH, URI_BEGINNING_PATH['webdav'])
 
-
 @app.before_request
 def before_request():
     """
@@ -71,14 +72,20 @@ def before_request():
         headers['Access-Control-Max-Age'] = '3600'
         headers['Access-Control-Allow-Credentials'] = 'true'
         content = ''
+        headers['Access-Control-Allow-Headers'] = \
+            'Origin, Accept, Accept-Encoding, Content-Length, Content-Type, ' + \
+            'Authorization, Depth, If-Modified-Since, If-None-Match'
+        headers['Access-Control-Expose-Headers'] = \
+            'Content-Type, Last-Modified, WWW-Authenticate'
+
         if is_authorized(request.cookies):
-            headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-            headers['Access-Control-Allow-Headers'] = 'Origin, Accept, Accept-Encoding, Content-Length, Content-Type, Authorization, Depth, If-Modified-Since, If-None-Match'
-            headers['Access-Control-Expose-Headers'] = 'Content-Type, Last-Modified, WWW-Authenticate'
+            headers['Access-Control-Allow-Origin'] = request.headers.get('Origin')
             response = make_response(content, 200)
             response.headers = headers
         else:
-            headers['WWW-Authenticate'] = 'Nayookie login_url=' + request.url_root + URI_BEGINNING_PATH['authorization'] + '{?back_url}'
+            headers['WWW-Authenticate'] = \
+                'Nayookie login_url=' + request.url_root + \
+                URI_BEGINNING_PATH['authorization'] + '{?back_url}'
             response = make_response(content, 401)
             response.headers = headers
             # do not handle the request if not authorized
@@ -87,7 +94,8 @@ def before_request():
         g.response = response
 
 class WebDAV(MethodView):
-    methods = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY', 'MOVE']
+    methods = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE', 'COPY',
+               'MOVE']
 
     def __init__(self):
         self.baseuri = URI_BEGINNING_PATH['webdav']
@@ -101,7 +109,6 @@ class WebDAV(MethodView):
             except IndexError:
                 request_data = None
         return request_data
-
 
     def get(self, pathname):
         """
@@ -170,7 +177,8 @@ class WebDAV(MethodView):
     def mkcol(self, pathname):
         """
             MKCOL:
-            creates a collection (that corresponds to a directory on the file system)
+            creates a collection (that corresponds to a directory on the file
+            system)
         """
 
         response = g.response
@@ -216,13 +224,14 @@ class WebDAV(MethodView):
         host = request.headers['Host']
         destination = destination.split(host + URI_BEGINNING_PATH['webdav'], 1)[-1]
         destination_path = FS_HANDLER.uri2local(destination)
-        print('COPY: %s -> %s' % (localpath, destination_path))
+        debug('COPY: %s -> %s' % (localpath, destination_path))
 
         if not os.path.exists(localpath):
             response.status = '404'
         elif not destination_path:
             response.status = '400'
-        elif 'Overwrite' in request.headers and request.headers['Overwrite'] == 'F' and os.path.exists(destination_path):
+        elif 'Overwrite' in request.headers and request.headers['Overwrite'] == 'F' \
+        and os.path.exists(destination_path):
             response.status = '412'
         else:
             response.status = '201'
@@ -234,12 +243,12 @@ class WebDAV(MethodView):
                 try:
                     shutil.copy2(localpath, destination_path)
                 except Exception:
-                    print('problem with copy2')
+                    debug('problem with copy2')
             else:
                 try:
                     shutil.copytree(localpath, destination_path)
                 except Exception:
-                    print('problem with copytree')
+                    debug('problem with copytree')
         return response
 
     def move(self, pathname):
@@ -258,7 +267,8 @@ class WebDAV(MethodView):
                 response.status = '424'
         return response
 
-app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>', view_func=WebDAV.as_view('dav'))
+app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>',
+                 view_func=WebDAV.as_view('dav'))
 
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
@@ -299,7 +309,8 @@ def system():
 @app.route('/')
 def links():
     the_links = '<div><ul>'
-    the_links += '\n'.join(['<li>%s: %s </li>' % (key, URI_BEGINNING_PATH[key]) for key in URI_BEGINNING_PATH.keys()])
+    the_links += '\n'.join(['<li>%s: %s </li>' % (key, URI_BEGINNING_PATH[key])
+                                                  for key in URI_BEGINNING_PATH.keys()])
     the_links += '</ul></div>'
     return 'TODO: nice set of links to useful local pages: %s <br> + HOWTO' % the_links
 
