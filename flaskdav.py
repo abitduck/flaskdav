@@ -194,7 +194,7 @@ class WebDAV(MethodView):
         response = g.response
 
         # currently unsupported
-        response.status = '423'
+        response.status = '501'
         return response
 
     def proppatch(self, pathname):
@@ -202,7 +202,7 @@ class WebDAV(MethodView):
         response = g.response
 
         # currently unsupported
-        response.status = '423'
+        response.status = '501'
         return response
 
     def mkcol(self, pathname):
