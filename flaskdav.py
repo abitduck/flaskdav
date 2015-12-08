@@ -323,6 +323,7 @@ def authorize():
 
     if request.method == 'POST':
         response = make_response()
+        debug(request.form.items())
         if request.form.get('reset') == 'true':
             debug('old key was: ' + app.secret_key)
             generate_key()
@@ -339,8 +340,9 @@ def authorize():
         else:
             return 'Something went wrong...'
 
+        response.status = '301' # moved permanently
+        response.headers['Location'] = '/'
         if back:
-            response.status = '301' # moved permanently
             response.headers['Location'] = back
         # what if not? use referer? send bad request error? just do nothing?
 
@@ -348,6 +350,10 @@ def authorize():
         debug(request.args)
         headers = request.headers
         response = make_response(render_template('authorization_page.html',
+                                 cookie_list=[ base64_decode(cookey)
+                                               for cookey in
+                                               request.cookies.keys()
+                                               if verify_cookie(cookey) ],
                                  origin=request.args.get('origin'),
                                  back_url=request.args.get('back_url')))
     return response

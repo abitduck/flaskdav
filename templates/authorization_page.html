@@ -1,5 +1,25 @@
 <div>Allow origin: {{ origin }} ? </div>
-<div>You will then be redirected to {{ back_url }} .</div>
+
+<div>{% if back_url %}
+You will then be redirected to '{{ back_url }}'.
+{% else %}
+You will be redirected to the server's main page.
+{% endif %}</div>
+
+
+<div>
+{% if cookie_list %}
+List of cookies set for accepted origins until now:
+    <ul>
+        {% for cookie in cookie_list %}
+        <li> {{ cookie }} </li>
+        {% endfor %}
+    </ul>
+{% else %}
+No cookies are set.
+{% endif %}
+</div>
+
 <form action="" method="post">
     <input type="checkbox" name="reset" value="true"> Invalidate all previous cookies <br>
     <button name="accept" value="ok">OK</button>
