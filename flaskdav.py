@@ -172,7 +172,7 @@ class WebDAV(MethodView):
         """
             PUT:
             on collection: 405 Method Not Allowed,
-            on ressource: create if not existschange content
+            on ressource: create if not exists, else change content
         """
 
         response = g.response
@@ -344,7 +344,6 @@ def authorize():
         response.headers['Location'] = '/'
         if back:
             response.headers['Location'] = back
-        # what if not? use referer? send bad request error? just do nothing?
 
     else:
         debug(request.args)
