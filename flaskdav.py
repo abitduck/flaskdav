@@ -15,6 +15,12 @@ FS_PATH = '/tmp/couscous'
 ALLOWED_METHODS = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE',
                    'COPY', 'MOVE', 'OPTIONS']
 
+def generate_key():
+    """
+       set application's secret key used for HMAC signature
+    """
+    app.secret_key = os.urandom(24)
+
 def debug(content):
     if app.debug: print(content)
 
@@ -27,11 +33,12 @@ URI_BEGINNING_PATH = {
     'devices': '/webdav/devices/'
 }
 
-def make_cookie_content_to_be_signed():
+def make_cookie_content_to_be_signed(origin=None):
     """ cookie content is based on Origin header and User-Agent
     (later HMAC'ed) """
 
-    origin = request.headers.get('Origin')
+    if not origin:
+        origin = request.headers.get('Origin')
     useragent = request.headers.get('User-Agent')
     return str(origin) + str(useragent)
 
@@ -42,21 +49,26 @@ def verify_cookie(cookey):
 
     is_correct = False
 
-    debug("verify_cookie: " + base64_decode(cookey))
-    cookie_value = request.cookies.get(str(cookey))
+    debug("verify_cookie for origin: " + base64_decode(cookey))
+    cookie_value = request.cookies.get(cookey)
     if cookie_value:
+        debug("cookie exists for this origin")
         s = Signer(app.secret_key)
-        debug("verify_cookie: " + cookie_value + ", " + \
-              s.get_signature(make_cookie_content_to_be_signed()))
-        if s.get_signature(make_cookie_content_to_be_signed()) == cookie_value:
+        expected_cookie_content = make_cookie_content_to_be_signed(base64_decode(cookey))
+        expected_cookie_content = s.get_signature(expected_cookie_content)
+        debug("verify_cookie: " + cookie_value + ", " + expected_cookie_content)
+
+        if expected_cookie_content == cookie_value:
+            debug('correct cookie')
             is_correct = True
+        else:
+            debug('incorrect cookie')
 
     return is_correct
 
 def is_authorized(cookies_list):
+    debug('is authorized, looking into cookies:\n' + str(request.cookies))
     origin = request.headers.get('Origin')
-    # TODO: accept requests from 127.0.0.1:port and localhost:port?
-    #       accept any port of any local addresses: localhost and 127.0.0.0/8?
     if origin is None: # request from same origin
         return True
     return verify_cookie(base64_encode(origin))
@@ -81,7 +93,8 @@ def before_request():
             'Authorization, Depth, If-Modified-Since, If-None-Match'
         headers['Access-Control-Expose-Headers'] = \
             'Content-Type, Last-Modified, WWW-Authenticate'
-        headers['Access-Control-Allow-Origin'] = request.headers.get('Origin')
+        origin = request.headers.get('Origin')
+        headers['Access-Control-Allow-Origin'] = origin
 
         specific_header = request.headers.get('Access-Control-Request-Headers')
 
@@ -93,16 +106,18 @@ def before_request():
             # tells the world we do CORS when authorized
             debug('OPTIONS request special header: ' + specific_header)
             headers['Access-Control-Request-Headers'] = specific_header
-            headers['Access-Control-Allow-Origin'] = '*'
+            headers['Access-Control-Allow-Origin'] = origin
             headers['Access-Control-Allow-Methods'] = ', '.join(ALLOWED_METHODS)
             response = make_response(content, 200)
             response.headers = headers
             return response
 
         else:
+            s = Signer(app.secret_key)
             headers['WWW-Authenticate'] = 'Nayookie login_url=' + \
                 urlparse.urljoin(request.url_root,
-                URI_BEGINNING_PATH['authorization']) + '{?back_url}'
+                URI_BEGINNING_PATH['authorization']) + '?sig=' + \
+                s.get_signature(origin) + '{&back_url,origin}'
             response = make_response(content, 401)
             response.headers = headers
             # do not handle the request if not authorized
@@ -303,18 +318,26 @@ def authorize():
              filesystem via the webdav server
         POST: set a cookie
     """
-    origin = request.headers.get('Origin')
+
+    origin = request.args.get('origin')
 
     if request.method == 'POST':
         response = make_response()
+        if request.form.get('reset') == 'true':
+            debug('old key was: ' + app.secret_key)
+            generate_key()
+            debug('new key is: ' + app.secret_key)
         s = Signer(app.secret_key)
-        key = base64_encode(str(origin))
-        back = request.args.get('back_url')
-        debug(back)
+        if s.get_signature(origin) == request.args.get('sig'):
+            key = base64_encode(str(origin))
+            back = request.args.get('back_url')
+            sig = request.args.get('sig')
 
-        # TODO add checkbox to reset private key and invalidate all previous authorizations
-        response.set_cookie(key, value=s.get_signature(make_cookie_content_to_be_signed()), max_age=None,
-                                expires=None, path='/', domain=None, secure=True, httponly=True)
+            debug('Correct origin, setting cookie with info: ' + make_cookie_content_to_be_signed(origin=origin))
+            response.set_cookie(key, value=s.get_signature(make_cookie_content_to_be_signed(origin=origin)),
+                                max_age=None, expires=None, path='/', domain=None, secure=True, httponly=True)
+        else:
+            return 'Something went wrong...'
 
         if back:
             response.status = '301' # moved permanently
@@ -322,9 +345,11 @@ def authorize():
         # what if not? use referer? send bad request error? just do nothing?
 
     else:
+        debug(request.args)
         headers = request.headers
         response = make_response(render_template('authorization_page.html',
-                                 origin=origin, back_url=request.args.get('back_url')))
+                                 origin=request.args.get('origin'),
+                                 back_url=request.args.get('back_url')))
     return response
 
 @app.route(URI_BEGINNING_PATH['system'])
@@ -362,5 +387,8 @@ if __name__ == '__main__':
         context.use_privatekey_file('ssl.key')
         context.use_certificate_file('ssl.cert')
 
-    app.secret_key = os.urandom(24)
+    if app.debug:
+        app.secret_key = 'maybe you should change me...'
+    else:
+        generate_key()
     app.run(host="localhost", ssl_context=context)
