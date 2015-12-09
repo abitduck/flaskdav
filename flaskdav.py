@@ -10,8 +10,6 @@ import os
 app = Flask(__name__.split('.')[0])
 app.config.from_object(__name__)
 
-FS_PATH = '/tmp/couscous'
-
 ALLOWED_METHODS = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE',
                    'COPY', 'MOVE', 'OPTIONS']
 
@@ -73,7 +71,6 @@ def is_authorized(cookies_list):
         return True
     return verify_cookie(base64_encode(origin))
 
-FS_HANDLER = utils.FilesystemHandler(FS_PATH, URI_BEGINNING_PATH['webdav'])
 
 @app.before_request
 def before_request():
@@ -106,7 +103,6 @@ def before_request():
             # tells the world we do CORS when authorized
             debug('OPTIONS request special header: ' + specific_header)
             headers['Access-Control-Request-Headers'] = specific_header
-            headers['Access-Control-Allow-Origin'] = origin
             headers['Access-Control-Allow-Methods'] = ', '.join(ALLOWED_METHODS)
             response = make_response(content, 200)
             response.headers = headers
@@ -132,9 +128,18 @@ class WebDAV(MethodView):
         self.baseuri = URI_BEGINNING_PATH['webdav']
 
     def get_body(self):
-        """ get the request's body """
+        """
+           get the request's body
+        """
+
         request_data = request.data
-        if not request_data and int(request.headers['Content-length']):
+
+        try:
+            length = int(request.headers.get('Content-length'))
+        except ValueError:
+            length = 0
+
+        if not request_data and length:
             try:
                 request_data = request.form.items()[0][0]
             except IndexError:
@@ -147,15 +152,15 @@ class WebDAV(MethodView):
            return headers + body (resource content or list of resources)
         """
         response = g.response
-        localpath = FS_HANDLER.uri2local(pathname)
+        localpath = app.fs_handler.uri2local(request.path)
         # TODO if into a collection => list of the ressources
         data = ''
 
         if os.path.isdir(localpath):
-            data = "\n".join(FS_HANDLER.get_children(pathname))
+            data = "\n".join(app.fs_handler.get_children(request.path))
         elif os.path.isfile(localpath):
             try:
-                data_resource = FS_HANDLER.get_data(pathname)
+                data_resource = app.fs_handler.get_data(request.path)
                 # TODO send large response by chunks would be nice for big
                 # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
                 data = data_resource.read()
@@ -177,7 +182,7 @@ class WebDAV(MethodView):
 
         response = g.response
 
-        localpath = FS_HANDLER.uri2local(pathname)
+        localpath = app.fs_handler.uri2local(request.path)
         # TODO: get large request chunk by chunk...
         request_body = self.get_body()
         if request_body is None:
@@ -185,7 +190,7 @@ class WebDAV(MethodView):
         elif os.path.isdir(localpath):
             response.status = '405'
         else:
-            response.status = str(FS_HANDLER.put(pathname, request_body))
+            response.status = str(app.fs_handler.put(request.path, request_body))
 
         return response
 
@@ -214,7 +219,7 @@ class WebDAV(MethodView):
 
         response = g.response
 
-        response.status = str(FS_HANDLER.mkcol(pathname))
+        response.status = str(app.fs_handler.mkcol(request.path))
         return response
 
     def delete(self, pathname):
@@ -225,7 +230,7 @@ class WebDAV(MethodView):
 
         response = g.response
 
-        localpath = FS_HANDLER.uri2local(pathname)
+        localpath = app.fs_handler.uri2local(request.path)
         if not os.path.exists(localpath):
             response.status = '404'
         if os.path.isdir(localpath):
@@ -250,11 +255,11 @@ class WebDAV(MethodView):
 
         response = g.response
 
-        localpath = FS_HANDLER.uri2local(pathname)
+        localpath = app.fs_handler.uri2local(request.path)
         destination = request.headers['Destination']
         host = request.headers['Host']
         destination = destination.split(host + URI_BEGINNING_PATH['webdav'], 1)[-1]
-        destination_path = FS_HANDLER.uri2local(destination)
+        destination_path = app.fs_handler.uri2local(destination)
         debug('COPY: %s -> %s' % (localpath, destination_path))
 
         if not os.path.exists(localpath):
@@ -290,10 +295,10 @@ class WebDAV(MethodView):
 
         response = g.response
 
-        copy_response = self.copy(pathname)
+        copy_response = self.copy(request.path)
         response.status = copy_response.status
         if copy_response.status == '201' or copy_response.status == '204':
-            delete_response = self.delete(pathname)
+            delete_response = self.delete(request.path)
             if delete_response.status != '204':
                 response.status = '424'
         return response
@@ -370,10 +375,11 @@ def links():
     return 'TODO: nice set of links to useful local pages: %s <br> + HOWTO' % the_links
 
 if __name__ == '__main__':
-
     import argparse
     parser = argparse.ArgumentParser(description='Run a local webdav/HTTP server.')
     parser.add_argument('-d', '--debug', action='store_true',
+                        help='Run flask app in debug mode (not recommended for use in production).')
+    parser.add_argument('-p', '--path', action='store',
                         help='Run flask app in debug mode (not recommended for use in production).')
     https = parser.add_argument_group('HTTPS', 'Arguments required for HTTPS support.')
     https.add_argument('--key', type=str, action='store', default=None,
@@ -383,6 +389,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     app.debug = args.debug
+
+    app.fs_path = '/tmp/' if not args.path else args.path
+    app.fs_handler = utils.FilesystemHandler(app.fs_path, URI_BEGINNING_PATH['webdav'])
 
     context = None
     if args.key and args.cert and os.path.isfile(args.key) and os.path.isfile(args.cert):

@@ -58,9 +58,9 @@ class FilesystemHandler():
         """ Sets the directory """
 
         if not os.path.isdir(path):
-            raise Exception, '%s not must be a directory!' % path
+            raise Exception, '%s must be a directory!' % path
 
-        self.directory = path
+        self.directory = os.path.normpath(path)
 
     def setBaseURI(self, uri):
         """ Sets the base uri """
@@ -73,21 +73,21 @@ class FilesystemHandler():
     def uri2local(self,uri):
         """ map uri in baseuri and local part """
 
-        path=urlparse.urlparse(uri).path.strip('/')
-        fileloc=path
-        filename=os.path.join(self.directory,fileloc)
-        filename=os.path.normpath(filename)
-        print('uri2local: %s -> %s' % (uri, filename))
-        return filename
+        path = os.path.normpath(uri)
+        if path.startswith(self.baseuri):
+            path = path[len(self.baseuri):]
+        filepath = os.path.join(self.directory, path)
+        filepath = os.path.normpath(filepath)
+        #print('uri2local: %s -> %s' % (uri, filepath))
+        return filepath
 
-    def local2uri(self,filename):
-        """ map local filename to self.baseuri """
-
-        pnum=len(split(self.directory.replace("\\","/"),"/"))
-        parts=split(filename.replace("\\","/"),"/")[pnum:]
-        sparts= joinfields(parts,"/")
-        uri=urlparse.urljoin(self.baseuri, sparts)
-        print('local2uri: %s -> %s' % (filename, uri))
+    def local2uri(self,filepath):
+        """ map local path to file to self.baseuri """
+        filepath = os.path.normpath(filepath)
+        if filepath.startswith(self.directory):
+            uri = filepath[len(self.directory):]
+        uri = os.path.normpath(self.baseuri + uri)
+        #print('local2uri: %s -> %s' % (filepath, uri))
         return uri
 
     def get_children(self, uri, filter=None):
@@ -100,8 +100,8 @@ class FilesystemHandler():
             if os.path.isdir(fileloc):
                 try:
                     files=os.listdir(fileloc)
-                except:
-                    raise 404
+                except Exception:
+                    raise ValueError
 
                 for file in files:
                     newloc=os.path.join(fileloc,file)
@@ -165,7 +165,7 @@ class FilesystemHandler():
             fp.close()
             status = 201
         except:
-            status = 409
+            status = 424
 
         return status
 
