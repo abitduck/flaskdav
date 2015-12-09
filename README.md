@@ -21,8 +21,11 @@ The HMAC key is reset each time you restart the server.
 
 flaskdav is under the GPL2 license.
 
-utils.py is a modified version of PyWebDAV's server/fshandler.py under GPL2 License
-original file: https://code.google.com/p/pywebdav/source/browse/pywebdav/server/fshandler.py
+utils.py is a modified version of PyWebDAV's files that are under GPL2 License
+original files:
+*    https://code.google.com/p/pywebdav/source/browse/pywebdav/server/fshandler.py
+*    https://code.google.com/p/pywebdav/source/browse/pywebdav/lib/propfind.py
+*    https://code.google.com/p/pywebdav/source/browse/pywebdav/lib/utils.py
 
 ## TODO
 - LOCK/UNLOCK support

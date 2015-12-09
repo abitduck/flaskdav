@@ -195,11 +195,23 @@ class WebDAV(MethodView):
         return response
 
     def propfind(self, pathname):
-
+        """
+           PROPFIND:
+           return informations about the properties of a resource/collection
+           into a XML body response
+        """
         response = g.response
 
-        # currently unsupported
-        response.status = '501'
+        pf = utils.PropfindProcessor(
+            request.path,
+            app.fs_handler,
+            request.headers.get('Depth', 'infinity'),
+            self.get_body())
+        try:
+            response.data = pf.create_response() + '\n'
+        except IOError:
+            response.status = '404'
+
         return response
 
     def proppatch(self, pathname):
