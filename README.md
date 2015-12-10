@@ -29,4 +29,5 @@ original files:
 
 ## TODO
 - LOCK/UNLOCK support
-- PROPFIND/PROPPATCH support
+- PROPPATCH support
+- continue cleaning PROPFIND code

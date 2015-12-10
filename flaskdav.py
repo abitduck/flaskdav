@@ -20,7 +20,11 @@ def generate_key():
     app.secret_key = os.urandom(24)
 
 def debug(content):
-    if app.debug: print(content)
+    """
+       print debug info if debug mode
+    """
+    if app.debug:
+        print(content)
 
 URI_BEGINNING_PATH = {
     'authorization': '/login/',
@@ -31,19 +35,22 @@ URI_BEGINNING_PATH = {
     'devices': '/webdav/devices/'
 }
 
-def make_cookie_content_to_be_signed(origin=None):
-    """ cookie content is based on Origin header and User-Agent
-    (later HMAC'ed) """
+def generate_cookie_info(origin=None):
+    """
+       cookie content is based on Origin header and User-Agent
+       (later HMAC'ed)
+    """
 
     if not origin:
         origin = request.headers.get('Origin')
     useragent = request.headers.get('User-Agent')
-    return str(origin) + str(useragent)
+    return '%s %s' % (str(origin), str(useragent))
 
 def verify_cookie(cookey):
-    """ verify that the signature contained in the cookie
-    corresponds to the informations sent by the app (see
-    make_cookie_content_to_be_signed) """
+    """
+       verify that the signature contained in the cookie corresponds to the
+       informations sent by the app (see generate_cookie_info)
+    """
 
     is_correct = False
 
@@ -52,7 +59,8 @@ def verify_cookie(cookey):
     if cookie_value:
         debug("cookie exists for this origin")
         s = Signer(app.secret_key)
-        expected_cookie_content = make_cookie_content_to_be_signed(base64_decode(cookey))
+        expected_cookie_content = \
+            generate_cookie_info(base64_decode(cookey))
         expected_cookie_content = s.get_signature(expected_cookie_content)
         debug("verify_cookie: " + cookie_value + ", " + expected_cookie_content)
 
@@ -64,7 +72,11 @@ def verify_cookie(cookey):
 
     return is_correct
 
-def is_authorized(cookies_list):
+def is_authorized():
+    """
+       is the app get authorization to access the WebDAV (check cookies)
+    """
+
     debug('is authorized, looking into cookies:\n' + str(request.cookies))
     origin = request.headers.get('Origin')
     if origin is None: # request from same origin
@@ -86,8 +98,9 @@ def before_request():
         headers['Access-Control-Allow-Credentials'] = 'true'
         content = ''
         headers['Access-Control-Allow-Headers'] = \
-            'Origin, Accept, Accept-Encoding, Content-Length, Content-Type, ' + \
-            'Authorization, Depth, If-Modified-Since, If-None-Match'
+            'Origin, Accept, Accept-Encoding, Content-Length, ' + \
+            'Content-Type, Authorization, Depth, If-Modified-Since, '+ \
+            'If-None-Match'
         headers['Access-Control-Expose-Headers'] = \
             'Content-Type, Last-Modified, WWW-Authenticate'
         origin = request.headers.get('Origin')
@@ -95,7 +108,7 @@ def before_request():
 
         specific_header = request.headers.get('Access-Control-Request-Headers')
 
-        if is_authorized(request.cookies):
+        if is_authorized():
             response = make_response(content, 200)
             response.headers = headers
 
@@ -122,6 +135,7 @@ def before_request():
         g.response = response
 
 class WebDAV(MethodView):
+    """ WebDAV server that handles request when destinated to it """
     methods = ALLOWED_METHODS
 
     def __init__(self):
@@ -215,6 +229,10 @@ class WebDAV(MethodView):
         return response
 
     def proppatch(self, pathname):
+        """
+           PROPPATCH:
+           allow changes of the properties
+        """
 
         response = g.response
 
@@ -268,9 +286,10 @@ class WebDAV(MethodView):
         response = g.response
 
         localpath = app.fs_handler.uri2local(request.path)
-        destination = request.headers['Destination']
         host = request.headers['Host']
-        destination = destination.split(host + URI_BEGINNING_PATH['webdav'], 1)[-1]
+        destination = request.headers['Destination'].split(
+            host + URI_BEGINNING_PATH['webdav'],
+            1)[-1]
         destination_path = app.fs_handler.uri2local(destination)
         debug('COPY: %s -> %s' % (localpath, destination_path))
 
@@ -278,14 +297,14 @@ class WebDAV(MethodView):
             response.status = '404'
         elif not destination_path:
             response.status = '400'
-        elif 'Overwrite' in request.headers and request.headers['Overwrite'] == 'F' \
+        elif 'Overwrite' in request.headers and \
+        request.headers['Overwrite'] == 'F' \
         and os.path.exists(destination_path):
             response.status = '412'
         else:
             response.status = '201'
             if os.path.exists(destination_path):
-                delete_response = self.delete(destination)
-                response.status = '204'
+                response.status = self.delete(destination)
 
             if os.path.isfile(localpath):
                 try:
@@ -318,7 +337,8 @@ class WebDAV(MethodView):
     def options(self, pathname):
         """
            OPTIONS:
-           used to process pre-flight request
+           used to process pre-flight request but response it supposed to be
+           sent in the before_request in that case...
         """
 
         return g.response
@@ -349,11 +369,11 @@ def authorize():
         if s.get_signature(origin) == request.args.get('sig'):
             key = base64_encode(str(origin))
             back = request.args.get('back_url')
-            sig = request.args.get('sig')
 
-            debug('Correct origin, setting cookie with info: ' + make_cookie_content_to_be_signed(origin=origin))
-            response.set_cookie(key, value=s.get_signature(make_cookie_content_to_be_signed(origin=origin)),
-                                max_age=None, expires=None, path='/', domain=None, secure=True, httponly=True)
+            info = generate_cookie_info(origin=origin)
+            debug('Correct origin, setting cookie with info: ' + info)
+            response.set_cookie(key, value=s.get_signature(info), max_age=None,
+                expires=None, path='/', domain=None, secure=True, httponly=True)
         else:
             return 'Something went wrong...'
 
@@ -364,7 +384,6 @@ def authorize():
 
     else:
         debug(request.args)
-        headers = request.headers
         response = make_response(render_template('authorization_page.html',
                                  cookie_list=[ base64_decode(cookey)
                                                for cookey in
@@ -376,24 +395,35 @@ def authorize():
 
 @app.route(URI_BEGINNING_PATH['system'])
 def system():
-    return 'TODO: page with system informations'
+    """
+       TODO: page with system informations
+    """
+    return "system info"
 
 @app.route('/')
 def links():
+    """
+       TODO: nice set of links to useful local pages
+       + HOWTO use the server
+    """
     the_links = '<div><ul>'
-    the_links += '\n'.join(['<li>%s: %s </li>' % (key, URI_BEGINNING_PATH[key])
-                                                  for key in URI_BEGINNING_PATH.keys()])
+    the_links += '\n'.join(['<li>%s: %s </li>' % (what, where)
+                            for what, where in URI_BEGINNING_PATH.iteritems()])
     the_links += '</ul></div>'
-    return 'TODO: nice set of links to useful local pages: %s <br> + HOWTO' % the_links
+    return the_links
+
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Run a local webdav/HTTP server.')
+    parser = argparse.ArgumentParser(description=\
+                                     'Run a local webdav/HTTP server.')
     parser.add_argument('-d', '--debug', action='store_true',
-                        help='Run flask app in debug mode (not recommended for use in production).')
+                        help='Run flask app in debug mode (not recommended ' +
+                             'for use in production).')
     parser.add_argument('-p', '--path', action='store',
-                        help='Run flask app in debug mode (not recommended for use in production).')
-    https = parser.add_argument_group('HTTPS', 'Arguments required for HTTPS support.')
+                        help='Path to use as WebDAV server base')
+    https = parser.add_argument_group('HTTPS',
+                                      'Arguments required for HTTPS support.')
     https.add_argument('--key', type=str, action='store', default=None,
                        help='SSL/TLS private key. Required for HTTPS support.')
     https.add_argument('--cert', type=str, action='store', default=None,
@@ -403,10 +433,12 @@ if __name__ == '__main__':
     app.debug = args.debug
 
     app.fs_path = '/tmp/' if not args.path else args.path
-    app.fs_handler = utils.FilesystemHandler(app.fs_path, URI_BEGINNING_PATH['webdav'])
+    app.fs_handler = utils.FilesystemHandler(app.fs_path,
+                                             URI_BEGINNING_PATH['webdav'])
 
     context = None
-    if args.key and args.cert and os.path.isfile(args.key) and os.path.isfile(args.cert):
+    if args.key and args.cert and os.path.isfile(args.key) \
+    and os.path.isfile(args.cert):
         from OpenSSL import SSL
         context = SSL.Context(SSL.TLSv1_2_METHOD)
         # TODO set strong ciphers with context.set_cipher_list()
