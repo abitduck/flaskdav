@@ -1,5 +1,5 @@
 from itsdangerous import Signer, base64_encode, base64_decode
-from flask import Flask, request, render_template, make_response, g
+from flask import Flask, request, render_template, make_response, g, Response
 from flask.views import MethodView
 
 import urlparse
@@ -9,6 +9,8 @@ import os
 
 app = Flask(__name__.split('.')[0])
 app.config.from_object(__name__)
+
+BUFFER_SIZE = 128000
 
 ALLOWED_METHODS = ['GET', 'PUT', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'DELETE',
                    'COPY', 'MOVE', 'OPTIONS']
@@ -175,10 +177,16 @@ class WebDAV(MethodView):
         elif os.path.isfile(localpath):
             try:
                 data_resource = app.fs_handler.get_data(request.path)
-                # TODO send large response by chunks would be nice for big
-                # files... http://flask.pocoo.org/docs/0.10/patterns/streaming/
-                data = data_resource.read()
-            except Exception:
+                def generate():
+                    data = data_resource.read(BUFFER_SIZE)
+                    while data:
+                        debug('get a chunk: ' + data)
+                        yield data
+                        data = data_resource.read(BUFFER_SIZE)
+                return Response(response=generate(), status=response.status,
+                                headers=response.headers)
+            except Exception, e:
+                debug(e)
                 response.status = '500'
         else:
             response.status = '404'
