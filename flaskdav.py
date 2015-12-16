@@ -89,8 +89,11 @@ def is_authorized():
 @app.before_request
 def before_request():
     """
-       allow cross origin for webdav uri that are authorized
+       * put in g the prepared response with status and headers
+       that can be changed by some methods later
+       * allow cross origin for webdav uri that are authorized
        and filter unauthorized requests!
+       * prepare response to OPTIONS request on webdav
     """
     if request.path.startswith(URI_BEGINNING_PATH['webdav']):
         response = None
@@ -169,7 +172,6 @@ class WebDAV(MethodView):
         """
         response = g.response
         localpath = app.fs_handler.uri2local(request.path)
-        # TODO if into a collection => list of the ressources
         data = ''
 
         if os.path.isdir(localpath):

@@ -28,6 +28,8 @@ original files:
 *    https://code.google.com/p/pywebdav/source/browse/pywebdav/lib/utils.py
 
 ## TODO
-- LOCK/UNLOCK support
-- PROPPATCH support
+- support LOCK/UNLOCK
+- support PROPPATCH
 - continue cleaning PROPFIND code
+- remove Resource class
+- read large data received via PUT/PROPFIND methods by chunks
