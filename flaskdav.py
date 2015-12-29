@@ -32,9 +32,7 @@ URI_BEGINNING_PATH = {
     'authorization': '/login/',
     'system': '/system/',
     'webdav': '/webdav/',
-    'links': '/',
-    'home': '/webdav/home/',
-    'devices': '/webdav/devices/'
+    'links': '/'
 }
 
 def generate_cookie_info(origin=None):
