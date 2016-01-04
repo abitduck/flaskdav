@@ -173,7 +173,7 @@ class WebDAV(MethodView):
         data = ''
 
         if os.path.isdir(localpath):
-            data = "\n".join(app.fs_handler.get_children(request.path))
+            data = render_template('get_collection.html', link_list=app.fs_handler.get_children(request.path))
         elif os.path.isfile(localpath):
             try:
                 data_resource = app.fs_handler.get_data(request.path)
@@ -409,16 +409,14 @@ def system():
     return "system info"
 
 @app.route('/')
-def links():
+def link_page():
     """
        TODO: nice set of links to useful local pages
        + HOWTO use the server
     """
-    the_links = '<div><ul>'
-    the_links += '\n'.join(['<li>%s: %s </li>' % (what, where)
-                            for what, where in URI_BEGINNING_PATH.iteritems()])
-    the_links += '</ul></div>'
-    return the_links
+    link_correspondance = ([ (what, where)
+                             for what, where in URI_BEGINNING_PATH.iteritems()])
+    return render_template('link_page.html', link_correspondance=link_correspondance)
 
 
 if __name__ == '__main__':
