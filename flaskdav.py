@@ -133,6 +133,7 @@ def before_request():
             return response
 
         g.status = status_code
+        debug('headers: ' + str(headers))
         g.headers = headers
 
 class WebDAV(MethodView):
@@ -168,6 +169,7 @@ class WebDAV(MethodView):
         """
         status = g.status
         headers = g.headers
+        debug('pathname: ' + pathname)
 
         localpath = app.fs_handler.uri2local(URI_BEGINNING_PATH['webdav'] + pathname)
         data = ''
@@ -235,8 +237,9 @@ class WebDAV(MethodView):
             self.get_body())
         try:
             response = make_response(pf.create_response() + '\n', status, headers)
-        except IOError:
-            response = make_response('', 404, headers)
+        except IOError, e:
+            debug(e)
+            response = make_response('Not found', 404, headers)
 
         return response
 
@@ -358,9 +361,13 @@ class WebDAV(MethodView):
 
         return make_response('', g.status, g.headers)
 
+webdav_view = WebDAV.as_view('dav')
+
+app.add_url_rule('/webdav/', defaults={'pathname': ''},
+                 view_func=webdav_view)
 
 app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>',
-                 view_func=WebDAV.as_view('dav'))
+                 view_func=webdav_view)
 
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])

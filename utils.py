@@ -77,7 +77,7 @@ class FilesystemHandler():
     def uri2local(self,uri):
         """ map uri in baseuri and local part """
 
-        path = os.path.normpath(uri)
+        path = os.path.normpath(uri) + '/'
         if path.startswith(self.baseuri):
             path = path[len(self.baseuri):]
         filepath = os.path.join(self.directory, path)
