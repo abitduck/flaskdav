@@ -362,12 +362,16 @@ class WebDAV(MethodView):
         return make_response('', g.status, g.headers)
 
 webdav_view = WebDAV.as_view('dav')
+app.add_url_rule(
+    '/webdav/',
+    defaults={'pathname': ''},
+    view_func=webdav_view
+)
 
-app.add_url_rule('/webdav/', defaults={'pathname': ''},
-                 view_func=webdav_view)
-
-app.add_url_rule(URI_BEGINNING_PATH['webdav'] + '<path:pathname>',
-                 view_func=webdav_view)
+app.add_url_rule(
+    URI_BEGINNING_PATH['webdav'] + '<path:pathname>',
+    view_func=webdav_view
+)
 
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
