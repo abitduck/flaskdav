@@ -178,6 +178,7 @@ class WebDAV(MethodView):
             data = render_template('get_collection.html', link_list=app.fs_handler.get_children(URI_BEGINNING_PATH['webdav'] + pathname))
         elif os.path.isfile(localpath):
             try:
+                #print(localpath + ': ' + mimetypes.guess_type(localpath))
                 headers["Content-type"] = mimetypes.guess_type(localpath)[0]
                 data_resource = app.fs_handler.get_data(URI_BEGINNING_PATH['webdav'] + pathname)
                 if len(data_resource) > BUFFER_SIZE:
@@ -387,7 +388,7 @@ def authorize():
     if request.method == 'POST':
         response = make_response()
         debug(request.form.items())
-        if request.form.get('reset') == 'true':
+        if request.form.get('continue') != 'true':
             debug('old key was: ' + app.secret_key)
             generate_key()
             debug('new key is: ' + app.secret_key)

@@ -1,26 +1,33 @@
-<div>Allow origin: {{ origin }} ? </div>
+<html>
+  <head>
+    <link href="/static/style.css" rel="stylesheet" type="text/css">
+  </head>
+  <body>
+    <div class="auth">
+      <h1>Allow applications from {{ origin }} to access the WebDAV (by setting a cookie)? </h1>
 
-<div>{% if back_url %}
-You will then be redirected to '{{ back_url }}'.
-{% else %}
-You will be redirected to the server's main page.
-{% endif %}</div>
+      <p>{% if back_url %}
+      You will then be redirected to '{{ back_url }}'.
+      {% endif %}</p>
 
 
-<div>
-{% if cookie_list %}
-List of cookies set for accepted origins until now:
-    <ul>
-        {% for cookie in cookie_list %}
-        <li> {{ cookie }} </li>
-        {% endfor %}
-    </ul>
-{% else %}
-No cookies are set.
-{% endif %}
-</div>
+      <div class="list">
+          {% if cookie_list %}
+          List of other authorized origins:
+              <ul>
+                  {% for cookie in cookie_list %}
+                  <li> {{ cookie }} </li>
+                  {% endfor %}
+              </ul>
+          {% else %}
+          No other origins are authorized to access the WebDAV server.
+          {% endif %}
+      </div>
 
-<form action="" method="post">
-    <input type="checkbox" name="reset" value="true"> Invalidate all previous cookies <br>
-    <button name="accept" value="ok">OK</button>
-</form>
+      <form action="" method="post">
+          <p class="cookie_reset {% if not cookie_list %}hidden{% endif %}"> <input type="checkbox" name="continue" value="true" checked> Continue allowing origins listed above </p>
+          <button name="accept" value="ok">Allow this app!</button>
+      </form>
+    </div>
+  </body>
+</html>
