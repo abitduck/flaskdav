@@ -30,6 +30,7 @@ def debug(content):
         print(content)
 
 URI_BEGINNING_PATH = {
+    'redirection': '/redirect/',
     'authorization': '/login/',
     'system': '/system/',
     'webdav': '/webdav/',
@@ -374,6 +375,19 @@ app.add_url_rule(
     view_func=webdav_view
 )
 
+
+@app.route(URI_BEGINNING_PATH['redirection'], methods=['GET', 'POST'])
+def redirect():
+    """
+        redirect the end user to the page or site given
+        as query, for example: ?back_url=https://somewhere/to/go
+    """
+    back = request.args.get('back_url')
+    if back:
+        return make_response('', 301, {'Location': back})
+        response.status = '301' # moved permanently
+    else:
+        return "Nowhere to redirect to."
 
 @app.route(URI_BEGINNING_PATH['authorization'], methods=['GET', 'POST'])
 def authorize():
