@@ -1,0 +1,10 @@
+PATH="/"
+if ! [[ -z "$1" ]] ; then
+    PATH="$1"
+fi
+
+if ! [ -r "ssl.key" -a -r "ssl.cert" ] ; then
+  /usr/bin/openssl req -nodes -newkey rsa -days 365 -keyout "ssl.key" -x509 -out "ssl.cert"
+fi
+
+/usr/local/bin/python flaskdav.py --cert ssl.cert --key ssl.key --path "${PATH}"

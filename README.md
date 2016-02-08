@@ -24,6 +24,16 @@ The HMAC key is reset each time you restart the server.
 
 tells the server to use the generated SSL key and certificate, and to give access to the full system.
 
+## Script
+
+On NayuOS, do:
+
+   bash runflaskdav
+
+to run flaskdav on / or give an absolute path as argument:
+
+   bash runflaskdav /media/removable
+
 ## LICENSE
 
 flaskdav is under the GPL2 license.
